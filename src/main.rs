@@ -6,8 +6,12 @@ mod subset;
 mod io_utils;
 
 #[derive(Parser)]
-#[command(name = "sparx")]
-#[command(about = "Disk-based sparse matrix statistics and subsetting.", long_about = None)]
+#[command(
+    name = env!("CARGO_PKG_NAME"),
+    author = env!("CARGO_PKG_AUTHORS"),
+    about = env!("CARGO_PKG_DESCRIPTION"),
+    version = env!("CARGO_PKG_VERSION")
+)]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
