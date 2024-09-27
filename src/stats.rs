@@ -161,9 +161,9 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
             idx,
             stats.nonzero_count,
             stats.sum,
-            format!("{:.2}", stats.mean()),
-            format!("{:.2}", stats.variance()),
-            format!("{:.2}", stats.std_dev()),
+            format!("{:.4}", stats.mean()),
+            format!("{:.4}", stats.variance()),
+            format!("{:.4}", stats.std_dev()),
             stats.min,
             stats.max
         )?;
@@ -184,9 +184,9 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
             idx,
             stats.nonzero_count,
             stats.sum,
-            format!("{:.2}", stats.mean()),
-            format!("{:.2}", stats.variance()),
-            format!("{:.2}", stats.std_dev()),
+            format!("{:.4}", stats.mean()),
+            format!("{:.4}", stats.variance()),
+            format!("{:.4}", stats.std_dev()),
             stats.min,
             stats.max
         )?;
