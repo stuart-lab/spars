@@ -57,6 +57,11 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
             continue; // Skip comments and empty lines
         }
 
+        if line_number % 1_000_000 == 0 {
+            print!("\rProcessed {} M elements", line_number / 1_000_000);
+            std::io::stdout().flush().expect("Can't flush output");
+        }
+
         let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
 
         if parts.len() < 3 {

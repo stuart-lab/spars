@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ArgGroup};
 use std::error::Error;
 
 mod stats;
@@ -26,6 +26,11 @@ enum Commands {
         output_prefix: String,
     },
     /// Subset the MTX file based on specified rows and columns
+    #[command(group(
+        ArgGroup::new("indices")
+            .required(true)
+            .args(&["rows", "cols"]),
+    ))]
     Subset {
         /// Input MTX file
         #[arg(short, long)]
