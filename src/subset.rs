@@ -10,17 +10,22 @@ pub fn subset_matrix(
     cols_file: Option<String>,
     no_reindex: bool,
 ) -> Result<(), Box<dyn Error>> {
+    // Check if both rows_file and cols_file are None
+    if rows_file.is_none() && cols_file.is_none() {
+        return Err("At least one of --rows or --cols must be specified.".into());
+    }
+
     // Read the indices to retain
     let rows_to_retain = if let Some(ref file_path) = rows_file {
         read_indices(file_path)?
     } else {
-        Vec::new()
+        Vec::new() // Empty vector indicates all rows are retained
     };
 
     let cols_to_retain = if let Some(ref file_path) = cols_file {
         read_indices(file_path)?
     } else {
-        Vec::new()
+        Vec::new() // Empty vector indicates all columns are retained
     };
 
     let row_mapping = if !rows_to_retain.is_empty() && !no_reindex {
@@ -38,13 +43,13 @@ pub fn subset_matrix(
     let rows_set: HashSet<usize> = if !rows_to_retain.is_empty() {
         rows_to_retain.into_iter().collect()
     } else {
-        HashSet::new()
+        HashSet::new() // Empty set indicates all rows are retained
     };
 
     let cols_set: HashSet<usize> = if !cols_to_retain.is_empty() {
         cols_to_retain.into_iter().collect()
     } else {
-        HashSet::new()
+        HashSet::new() // Empty set indicates all columns are retained
     };
 
     let temp_data_file = "temp_data.mtx";
@@ -57,8 +62,10 @@ pub fn subset_matrix(
     let mut n_nonzeros = 0;
     let mut data_started = false;
 
-    // Read and process the input file line by line
     let mut buffer = String::new();
+
+    let mut nz_elements = 0;
+
     while reader.read_line(&mut buffer)? > 0 {
         let trimmed_line = buffer.trim();
 
@@ -71,8 +78,16 @@ pub fn subset_matrix(
         if !data_started {
             // This is the line with dimensions and n_nonzeros, skip for now
             data_started = true;
+            // Store the original dimensions for later use
+            header_lines.push(buffer.clone());
             buffer.clear();
             continue;
+        }
+
+        nz_elements += 1;
+        if nz_elements % 1_000_000 == 0 {
+            print!("\rProcessed {} M elements", nz_elements / 1_000_000);
+            std::io::stdout().flush().expect("Can't flush output");
         }
 
         // Parse data lines
@@ -86,8 +101,17 @@ pub fn subset_matrix(
                 "1"
             }; // Default value for pattern matrices
 
-            let row_included = rows_set.is_empty() || rows_set.contains(&row_idx);
-            let col_included = cols_set.is_empty() || cols_set.contains(&col_idx);
+            let row_included = if rows_set.is_empty() {
+                true // All rows are retained
+            } else {
+                rows_set.contains(&row_idx)
+            };
+
+            let col_included = if cols_set.is_empty() {
+                true // All columns are retained
+            } else {
+                cols_set.contains(&col_idx)
+            };
 
             if row_included && col_included {
                 n_nonzeros += 1;
@@ -121,32 +145,23 @@ pub fn subset_matrix(
         writeln!(output_writer, "{}", line.trim_end())?;
     }
 
-    // Write the new dimensions and n_nonzeros
+    // Calculate new dimensions
+    let (orig_n_rows, orig_n_cols, _orig_n_nonzeros) = parse_header_line(&header_lines)?;
+
     let n_rows = if let Some(ref mapping) = row_mapping {
         mapping.len()
+    } else if !rows_set.is_empty() {
+        rows_set.len()
     } else {
-        // If no reindexing, use original dimensions
-        header_lines
-            .last()
-            .unwrap()
-            .split_whitespace()
-            .next()
-            .unwrap()
-            .parse()
-            .unwrap()
+        orig_n_rows // All rows retained
     };
 
     let n_cols = if let Some(ref mapping) = col_mapping {
         mapping.len()
+    } else if !cols_set.is_empty() {
+        cols_set.len()
     } else {
-        header_lines
-            .last()
-            .unwrap()
-            .split_whitespace()
-            .nth(1)
-            .unwrap()
-            .parse()
-            .unwrap()
+        orig_n_cols // All columns retained
     };
 
     writeln!(output_writer, "{} {} {}", n_rows, n_cols, n_nonzeros)?;
@@ -161,8 +176,6 @@ pub fn subset_matrix(
 
     // Clean up the temporary data file
     std::fs::remove_file(temp_data_file)?;
-
-    println!("Subsetted matrix has been written to '{}'", output_file);
 
     Ok(())
 }
@@ -200,4 +213,25 @@ fn create_index_mapping(indices: &[usize]) -> HashMap<usize, usize> {
         .enumerate()
         .map(|(new_idx, &old_idx)| (old_idx, new_idx + 1))
         .collect()
+}
+
+fn parse_header_line(header_lines: &Vec<String>) -> Result<(usize, usize, usize), Box<dyn Error>> {
+    // Find the last non-comment line in header_lines
+    for line in header_lines.iter().rev() {
+        let trimmed_line = line.trim();
+        if trimmed_line.starts_with('%') || trimmed_line.is_empty() {
+            continue;
+        } else {
+            let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                let n_rows = parts[0].parse()?;
+                let n_cols = parts[1].parse()?;
+                let n_nonzeros = parts[2].parse()?;
+                return Ok((n_rows, n_cols, n_nonzeros));
+            } else {
+                break;
+            }
+        }
+    }
+    Err("Error parsing header line for matrix dimensions.".into())
 }
