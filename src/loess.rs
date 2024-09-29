@@ -103,7 +103,14 @@ pub fn loess(
     let n = x.len();
     let mut y_predict = Vec::with_capacity(x_predict.len());
 
-    let k = ((span * n as f64).ceil() as usize).max(degree + 1); // Ensure enough points
+    // The value of k is typically determined by the span parameter
+    // In standard LOESS implementations, k is usually calculated as:
+    let k = (span * n as f64).round() as usize;
+    
+    // However, we still need to ensure k is at least degree + 1 to avoid underdetermined systems
+    let k = k.max(degree + 1);
+
+    // println!("{}", k);
 
     for &x0 in x_predict {
         // Find distances from x0 to all x
