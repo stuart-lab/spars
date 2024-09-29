@@ -1,7 +1,11 @@
 use crate::io_utils;
+use crate::loess;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{BufRead, Write};
+use rand::thread_rng;
+use rand::seq::SliceRandom;
+
 
 pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dyn Error>> {
     let row_output_file = format!("{}_row.tsv", output_prefix);
@@ -154,15 +158,43 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
             });
     }
 
+    // Collect means and variances for all rows
+    let mut row_indices = Vec::new();
+    let mut row_means = Vec::new();
+    let mut row_variances = Vec::new();
+
+    for row_idx in 1..=n_rows {
+        if let Some(stats) = row_stats.get(&row_idx) {
+            row_indices.push(row_idx);
+            row_means.push(stats.mean());
+            row_variances.push(stats.variance());
+        }
+    }
+
+    // Compute residual variances with LOESS
+    println!("Fitting Mean-Variance model");
+    let span = 0.2;
+    let residual_variances = compute_residual_variance(&row_means, &row_variances, span)?;
+
+    // Update the Stats structs with residual variances
+    for (&row_idx, &res_var) in row_indices.iter().zip(residual_variances.iter()) {
+        if let Some(stats) = row_stats.get_mut(&row_idx) {
+            stats.residual_variance = Some(res_var);
+        }
+    }
+
     // Write row statistics to TSV file
     let mut row_file = io_utils::get_writer(&row_output_file)?;
-    writeln!(row_file, "Row\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax")?;
+    writeln!(
+        row_file,
+        "Row\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax\tResidualVariance"
+    )?;
     let mut sorted_rows: Vec<_> = row_stats.iter().collect();
     sorted_rows.sort_by_key(|&(idx, _)| *idx);
     for (&idx, stats) in sorted_rows {
         writeln!(
             row_file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             idx,
             stats.nonzero_count,
             stats.sum,
@@ -170,7 +202,11 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
             format!("{:.4}", stats.variance()),
             format!("{:.4}", stats.std_dev()),
             stats.min,
-            stats.max
+            stats.max,
+            match stats.residual_variance {
+                Some(rv) => format!("{:.4}", rv),
+                None => "NA".to_string(),
+            }
         )?;
     }
 
@@ -207,6 +243,7 @@ struct Stats {
     sum_of_squares: f64,
     min: f64,
     max: f64,
+    residual_variance: Option<f64>,
 }
 
 impl Stats {
@@ -218,6 +255,7 @@ impl Stats {
             sum_of_squares: value * value,
             min: value,
             max: value,
+            residual_variance: None,
         }
     }
 
@@ -257,4 +295,65 @@ impl Stats {
     fn std_dev(&self) -> f64 {
         self.variance().sqrt()
     }
+}
+
+fn compute_residual_variance(
+    means: &Vec<f64>,
+    variances: &Vec<f64>,
+    span: f64,
+) -> Result<Vec<f64>, Box<dyn std::error::Error>> {
+
+    if means.len() != variances.len() {
+        return Err("Means and variances vectors must have the same length.".into());
+    }
+
+    // Compute min and max of means
+    let min_mean = means.iter().cloned().fold(f64::INFINITY, f64::min);
+    let max_mean = means.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+
+    // Define the number of bins
+    let num_bins = 200;
+    let bin_width = (max_mean - min_mean) / num_bins as f64;
+
+    // Create bins
+    let mut bins: Vec<Vec<usize>> = vec![Vec::new(); num_bins];
+
+    for (idx, &mean_value) in means.iter().enumerate() {
+        let bin_idx = ((mean_value - min_mean) / bin_width).floor() as usize;
+        let bin_idx = bin_idx.min(num_bins - 1); // Ensure the index is within bounds
+        bins[bin_idx].push(idx);
+    }
+
+    // Sample up to 500 instances from each bin
+    let mut sampled_indices = Vec::new();
+    let mut rng = thread_rng();
+
+    for bin in bins {
+        let n_in_bin = bin.len();
+        if n_in_bin == 0 {
+            continue; // Skip empty bins
+        }
+        if n_in_bin <= 500 {
+            sampled_indices.extend(bin);
+        } else {
+            let sampled = bin.choose_multiple(&mut rng, 500).cloned().collect::<Vec<usize>>();
+            sampled_indices.extend(sampled);
+        }
+    }
+
+    // Create sampled mean and variance vectors
+    let sampled_means = sampled_indices.iter().map(|&i| means[i]).collect::<Vec<f64>>();
+    let sampled_variances = sampled_indices.iter().map(|&i| variances[i]).collect::<Vec<f64>>();
+
+    let degree = 2; // quadratic fitting
+    let var_fitted = loess::loess(&sampled_means, &sampled_variances, span, degree, &means);
+    // Compute residuals
+    let residuals: Vec<f64> = variances
+        .iter()
+        .zip(var_fitted.iter())
+        .map(|(&yi, &y_fit)| yi - y_fit)
+        .collect();
+    let residual_variance = residuals.iter().map(|&r| r * r).collect();
+    
+    Ok(residual_variance)
 }

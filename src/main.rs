@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ArgGroup};
 use std::error::Error;
 
 mod stats;
+mod loess;
 mod subset;
 mod io_utils;
 
