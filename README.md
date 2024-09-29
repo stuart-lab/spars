@@ -26,3 +26,5 @@ To compile, clone the git repo and run `cargo install`:
 git clone git@github.com:stuart-lab/sparx.git
 cd sparx; cargo install --path .
 ```
+
+Precompiled binaries are also available in the release
