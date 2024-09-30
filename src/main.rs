@@ -36,11 +36,11 @@ enum Commands {
             .args(&["rows", "cols"]),
     ))]
     Subset {
-        /// Input MTX file
-        #[arg(short, long)]
-        input: String,
+        /// Input MTX file or directory containing matrix.mtx.gz, features.tsv.gz, and barcodes.tsv
+        #[arg(short = 'i', long = "input")]
+        input: Option<String>,
 
-        /// Output MTX file
+        /// Output MTX file or directory name (if directory is used, matrix.mtx.gz, features.tsv.gz, and barcodes.tsv will be subsetted)
         #[arg(short, long)]
         output: String,
 
@@ -72,7 +72,14 @@ fn main() -> Result<(), Box<dyn Error>> {
             cols,
             no_reindex,
         } => {
-            subset::subset_matrix(&input, &output, rows, cols, no_reindex)?;
+
+            subset::subset_matrix(
+                input,
+                &output,
+                rows,
+                cols,
+                no_reindex,
+            )?;
         }
     }
 
