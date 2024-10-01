@@ -63,7 +63,7 @@ pub fn subset_matrix(
         let dir_path = Path::new(input.as_ref().unwrap());
         let output_path = Path::new(output);
         let matrix_file = dir_path.join("matrix.mtx.gz").to_string_lossy().into_owned();
-        let output_matrix = output_path.join("matrix.mtx").to_string_lossy().into_owned();
+        let output_matrix = output_path.join("matrix.mtx.gz").to_string_lossy().into_owned();
         let features_file = dir_path.join("features.tsv.gz").to_string_lossy().into_owned();
         let barcodes_file = if dir_path.join("barcodes.tsv.gz").exists() {
             dir_path.join("barcodes.tsv.gz").to_string_lossy().into_owned()
@@ -71,8 +71,8 @@ pub fn subset_matrix(
             dir_path.join("barcodes.tsv").to_string_lossy().into_owned()
         };
 
-        let output_features = output_path.join("features.tsv").to_string_lossy().into_owned();
-        let output_barcodes = output_path.join("barcodes.tsv").to_string_lossy().into_owned();
+        let output_features = output_path.join("features.tsv.gz").to_string_lossy().into_owned();
+        let output_barcodes = output_path.join("barcodes.tsv.gz").to_string_lossy().into_owned();
 
         subset_mtx_file(&matrix_file, &output_matrix, &row_mapping, &col_mapping, &rows_set, &cols_set)?;
         subset_dimnames_file(&features_file, &output_features, &rows_to_retain, &row_mapping)?;
