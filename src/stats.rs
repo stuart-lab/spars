@@ -270,8 +270,8 @@ struct Stats {
 impl Stats {
     fn new(value: f64) -> Self {
         Stats {
-            count: 0, // Will be set during finalization
-            nonzero_count: 1,
+            count: 1,
+            nonzero_count: if value != 0.0 { 1 } else { 0 },
             sum: value,
             sum_of_squares: value * value,
             min: value,
@@ -280,7 +280,10 @@ impl Stats {
     }
 
     fn update(&mut self, value: f64) {
-        self.nonzero_count += 1;
+        self.count += 1;
+        if value != 0.0 {
+            self.nonzero_count += 1;
+        }
         self.sum += value;
         self.sum_of_squares += value * value;
 
@@ -294,12 +297,13 @@ impl Stats {
     }
 
     fn finalize(&mut self, total_count: usize, nonzero_count: usize) {
-        // Adjust the count to include zeros
+        // Adjust the count and nonzero_count
         self.count = total_count;
         self.nonzero_count = nonzero_count;
 
-        // Zeros contribute zero to sum and sum_of_squares
-        // No adjustment needed
+        // No need to adjust sum or sum_of_squares as zeros don't contribute
+
+        // min is nonzero minumum
     }
 
     fn mean(&self) -> f64 {
