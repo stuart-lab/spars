@@ -206,6 +206,9 @@ fn subset_mtx_file(
 
     temp_writer.flush()?;
 
+    // Clear the progress line after processing is complete
+    println!("");
+
     // Now write the header to the output file
     let mut output_writer = io_utils::get_writer(output_file)?;
 

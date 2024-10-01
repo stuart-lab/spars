@@ -126,6 +126,9 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
         *col_nonzero_counts.entry(col_idx).or_insert(0) += 1;
     }
 
+    // Clear the progress line after processing is complete
+    println!("");
+
     // Finalize stats for all rows
     for row_idx in 1..=n_rows {
         let nonzero_count = row_nonzero_counts.get(&row_idx).cloned().unwrap_or(0);
