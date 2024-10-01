@@ -29,7 +29,8 @@ enum Commands {
         #[arg(short, long, default_value = "stats")]
         output_prefix: String,
 
-        /// Column to sort the row and column statistics by (e.g., "Sum", "Mean", "Variance")
+        /// Column to sort the row and column statistics by
+        /// Can be one of: NonZeroCount, Sum, Mean, Variance, StdDev, Min, Max
         #[arg(short, long)]
         sort_by: Option<String>,
     },
