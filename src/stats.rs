@@ -2,10 +2,47 @@ use crate::io_utils;
 use std::collections::HashMap;
 use std::error::Error;
 use std::io::{BufRead, Write};
+use std::cmp::Ordering;
+use std::str::FromStr;
 
-pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dyn Error>> {
-    let row_output_file = format!("{}_row.tsv", output_prefix);
-    let col_output_file = format!("{}_col.tsv", output_prefix);
+#[derive(Clone, Copy)]
+enum SortColumn {
+    Index,
+    NonZeroCount,
+    Sum,
+    Mean,
+    Variance,
+    StdDev,
+    Min,
+    Max,
+}
+
+impl FromStr for SortColumn {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "index" => Ok(SortColumn::Index),
+            "nonzerocount" => Ok(SortColumn::NonZeroCount),
+            "sum" => Ok(SortColumn::Sum),
+            "mean" => Ok(SortColumn::Mean),
+            "variance" => Ok(SortColumn::Variance),
+            "stddev" => Ok(SortColumn::StdDev),
+            "min" => Ok(SortColumn::Min),
+            "max" => Ok(SortColumn::Max),
+            _ => Err(format!("Invalid sort column: {}", s)),
+        }
+    }
+}
+
+pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<String>) -> Result<(), Box<dyn Error>> {
+
+    let valid_sort_columns = vec!["NonZeroCount", "Sum", "Mean", "Variance", "StdDev", "Min", "Max"];
+    if let Some(ref sort_by) = sort_by {
+        if !valid_sort_columns.contains(&sort_by.as_str()) {
+            return Err(format!("Invalid sort column: {:?}", sort_by).into());
+        }
+    }
 
     let mut reader = io_utils::get_reader(input_file)?;
 
@@ -158,36 +195,38 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
     }
 
     // Write row statistics to TSV file
-    let mut row_file = io_utils::get_writer(&row_output_file)?;
-    writeln!(row_file, "Row\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax")?;
-    let mut sorted_rows: Vec<_> = row_stats.iter().collect();
-    sorted_rows.sort_by_key(|&(idx, _)| *idx);
-    for (&idx, stats) in sorted_rows {
-        writeln!(
-            row_file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            idx,
-            stats.nonzero_count,
-            stats.sum,
-            format!("{:.4}", stats.mean()),
-            format!("{:.4}", stats.variance()),
-            format!("{:.4}", stats.std_dev()),
-            stats.min,
-            stats.max
-        )?;
+
+    // Sort and write row statistics
+    let row_output_file = format!("{}_row.tsv", output_prefix);
+    write_stats(&row_output_file, &row_stats, sort_by.as_deref(), "Row")?;
+
+    // Sort and write column statistics
+    let col_output_file = format!("{}_col.tsv", output_prefix);
+    write_stats(&col_output_file, &col_stats, sort_by.as_deref(), "Column")?;
+
+    Ok(())
+}
+
+fn write_stats(
+    output_file: &str,
+    stats: &HashMap<usize, Stats>,
+    sort_by: Option<&str>,
+    index_name: &str,
+) -> Result<(), Box<dyn Error>> {
+    let mut file = io_utils::get_writer(output_file)?;
+    writeln!(file, "{}\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax", index_name)?;
+
+    let mut sorted_stats: Vec<(usize, &Stats)> = stats.iter().map(|(&k, v)| (k, v)).collect();
+    
+    if let Some(sort_column) = sort_by.and_then(|s| s.parse::<SortColumn>().ok()) {
+        sort_stats(&mut sorted_stats, sort_column);
+    } else {
+        sorted_stats.sort_by_key(|&(idx, _)| idx);
     }
 
-    // Write column statistics to TSV file
-    let mut col_file = io_utils::get_writer(&col_output_file)?;
-    writeln!(
-        col_file,
-        "Column\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax"
-    )?;
-    let mut sorted_cols: Vec<_> = col_stats.iter().collect();
-    sorted_cols.sort_by_key(|&(idx, _)| *idx);
-    for (&idx, stats) in sorted_cols {
+    for (idx, stats) in &sorted_stats {
         writeln!(
-            col_file,
+            file,
             "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             idx,
             stats.nonzero_count,
@@ -201,6 +240,22 @@ pub fn compute_stats(input_file: &str, output_prefix: &str) -> Result<(), Box<dy
     }
 
     Ok(())
+}
+
+fn sort_stats(stats: &mut [(usize, &Stats)], sort_column: SortColumn) {
+    stats.sort_by(|&(idx_a, a), &(idx_b, b)| {
+        let cmp = match sort_column {
+            SortColumn::Index => idx_a.cmp(&idx_b),
+            SortColumn::NonZeroCount => a.nonzero_count.cmp(&b.nonzero_count),
+            SortColumn::Sum => a.sum.partial_cmp(&b.sum).unwrap_or(Ordering::Equal),
+            SortColumn::Mean => a.mean().partial_cmp(&b.mean()).unwrap_or(Ordering::Equal),
+            SortColumn::Variance => a.variance().partial_cmp(&b.variance()).unwrap_or(Ordering::Equal),
+            SortColumn::StdDev => a.std_dev().partial_cmp(&b.std_dev()).unwrap_or(Ordering::Equal),
+            SortColumn::Min => a.min.partial_cmp(&b.min).unwrap_or(Ordering::Equal),
+            SortColumn::Max => a.max.partial_cmp(&b.max).unwrap_or(Ordering::Equal),
+        };
+        cmp.reverse()
+    });
 }
 
 struct Stats {

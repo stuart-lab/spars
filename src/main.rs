@@ -28,6 +28,10 @@ enum Commands {
         /// Output prefix for the statistics files
         #[arg(short, long, default_value = "stats")]
         output_prefix: String,
+
+        /// Column to sort the row and column statistics by (e.g., "Sum", "Mean", "Variance")
+        #[arg(short, long)]
+        sort_by: Option<String>,
     },
     /// Subset the MTX file based on specified rows and columns
     #[command(group(
@@ -62,8 +66,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Stats { input, output_prefix } => {
-            stats::compute_stats(&input, &output_prefix)?;
+        Commands::Stats { input, output_prefix, sort_by } => {
+            stats::compute_stats(&input, &output_prefix, sort_by)?;
         }
         Commands::Subset {
             input,
