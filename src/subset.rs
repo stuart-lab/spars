@@ -235,6 +235,8 @@ fn subset_mtx_file(
         orig_n_cols // All columns retained
     };
 
+    // record program information in the header
+    writeln!(output_writer, "%metadata json: {{\"software_version\": \"sparx-1.0.0\", \"command\": \"sparx subset\"}}")?;
     writeln!(output_writer, "{} {} {}", n_rows, n_cols, n_nonzeros)?;
 
     output_writer.flush()?;
