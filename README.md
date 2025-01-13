@@ -20,6 +20,14 @@ sparx stats -i <matrix.mtx> -o <filename>
 
 ## Installation
 
+### From cargo
+
+```
+cargo install sparx
+```
+
+### From GitHub
+
 To compile, clone the git repo and run `cargo install`:
 
 ```
