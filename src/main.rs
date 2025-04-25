@@ -1,9 +1,10 @@
 use clap::{Parser, Subcommand, ArgGroup};
 use std::error::Error;
-
+use std::path::PathBuf;
 mod stats;
 mod subset;
 mod io_utils;
+mod man;
 
 #[derive(Parser)]
 #[command(
@@ -65,6 +66,20 @@ enum Commands {
         #[arg(long)]
         no_reindex: bool,
     },
+
+    #[command(
+        name = "generate-manpages",
+        about = "Generate man pages",
+        hide = true  // Hide from normal help output
+    )]
+    GenerateManPages {
+        #[arg(
+            short, 
+            long,
+            help = "Output directory for man pages"
+        )]
+        outdir: PathBuf,
+    },
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -90,6 +105,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 no_reindex,
             )?;
         }
+        Commands::GenerateManPages { outdir } => {
+            man::generate_manpages(outdir)?;
+        },
     }
 
     Ok(())
