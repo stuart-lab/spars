@@ -30,9 +30,13 @@ enum Commands {
         output_prefix: String,
 
         /// Column to sort the row and column statistics by
-        /// Can be one of: NonZeroCount, Sum, Mean, Variance, StdDev, Min, Max
-        #[arg(short, long)]
+        /// Can be one of: NonZeroCount, Sum, Mean, Variance, StdDev, Min, Max, PearsonResidualVar
+        #[arg(short, long, default_value = "PearsonResidualVar")]
         sort_by: Option<String>,
+
+        /// Dispersion parameter for Pearson residual variance calculation
+        #[arg(short, long, default_value = "100")]
+        theta: Option<f64>,
     },
     /// Subset the MTX file based on specified rows and columns
     #[command(group(
@@ -67,8 +71,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Stats { input, output_prefix, sort_by } => {
-            stats::compute_stats(&input, &output_prefix, sort_by)?;
+        Commands::Stats { input, output_prefix, sort_by, theta } => {
+            stats::compute_stats(&input, &output_prefix, sort_by, theta)?;
         }
         Commands::Subset {
             input,

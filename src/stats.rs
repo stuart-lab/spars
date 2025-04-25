@@ -15,6 +15,7 @@ enum SortColumn {
     StdDev,
     Min,
     Max,
+    PearsonResidualVar,
 }
 
 impl FromStr for SortColumn {
@@ -30,14 +31,17 @@ impl FromStr for SortColumn {
             "stddev" => Ok(SortColumn::StdDev),
             "min" => Ok(SortColumn::Min),
             "max" => Ok(SortColumn::Max),
+            "pearsonresidualvar" => Ok(SortColumn::PearsonResidualVar),
             _ => Err(format!("Invalid sort column: {}", s)),
         }
     }
 }
 
-pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<String>) -> Result<(), Box<dyn Error>> {
+pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<String>, theta: Option<f64>) -> Result<(), Box<dyn Error>> {
+    let default_theta = 100.0;
+    let theta = theta.unwrap_or(default_theta);
 
-    let valid_sort_columns = vec!["NonZeroCount", "Sum", "Mean", "Variance", "StdDev", "Min", "Max"];
+    let valid_sort_columns = vec!["NonZeroCount", "Sum", "Mean", "Variance", "StdDev", "Min", "Max", "PearsonResidualVar"];
     if let Some(ref sort_by) = sort_by {
         if !valid_sort_columns.contains(&sort_by.as_str()) {
             return Err(format!("Invalid sort column: {:?}", sort_by).into());
@@ -194,6 +198,94 @@ pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<Stri
             });
     }
 
+    // Second pass to compute residuals
+    let mut reader = io_utils::get_reader(input_file)?;
+    
+    // Skip header
+    let mut line = String::new();
+    loop {
+        let bytes = reader.read_line(&mut line)?;
+        if bytes == 0 {
+            break;
+        }
+        let trimmed_line = line.trim();
+
+        if !trimmed_line.starts_with('%') && !trimmed_line.is_empty() {
+            let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
+            if parts.len() >= 3 {
+                line.clear();
+                break;
+            }
+        }
+        line.clear();
+    }
+
+    let mut row_pearson_residual_sums: HashMap<usize, f64> = HashMap::new();
+    let mut row_pearson_residual_squares: HashMap<usize, f64> = HashMap::new();
+    
+    for (line_number, line) in reader.lines().enumerate() {
+        let line = line?;
+        let trimmed_line = line.trim();
+
+        if trimmed_line.starts_with('%') || trimmed_line.is_empty() {
+            continue; // Skip comments and empty lines
+        }
+
+        if line_number % 1_000_000 == 0 {
+            print!("\rComputing residuals: {} M elements", line_number / 1_000_000);
+            std::io::stdout().flush().expect("Can't flush output");
+        }
+
+        let parts: Vec<&str> = trimmed_line.split_whitespace().collect();
+        if parts.len() < 3 {
+            continue;
+        }
+
+        let row_idx = match parts[0].parse::<usize>() {
+            Ok(idx) => idx,
+            Err(_) => continue,
+        };
+
+        let value = match parts[2].parse::<f64>() {
+            Ok(val) => val,
+            Err(_) => continue,
+        };
+
+        // Get the row mean from previously computed stats
+        if let Some(row_stat) = row_stats.get(&row_idx) {
+            let mean = row_stat.mean();
+            
+            // Calculate Pearson residual: (X - μ) / sqrt(μ + μ²/θ)
+            let denominator = (mean + mean * mean / theta).sqrt();
+            let pearson_residual = if denominator != 0.0 { (value - mean) / denominator } else { 0.0 };
+            
+            // Clip Pearson residuals by sqrt(n_cols)
+            let clip_threshold = (n_cols as f64 / 2.0).sqrt();
+            let clipped_pearson_residual = pearson_residual.max(-clip_threshold).min(clip_threshold);
+            
+            // Update Pearson residual sums for variance calculation
+            *row_pearson_residual_sums.entry(row_idx).or_insert(0.0) += clipped_pearson_residual;
+            *row_pearson_residual_squares.entry(row_idx).or_insert(0.0) += clipped_pearson_residual * clipped_pearson_residual;
+        }
+    }
+    
+    println!("");  // Clear the progress line
+
+    // Calculate residual variances for each row
+    for (row_idx, stats) in &mut row_stats {
+        // Calculate Pearson residual variance
+        if let (Some(sum), Some(sum_squares)) = (row_pearson_residual_sums.get(row_idx), row_pearson_residual_squares.get(row_idx)) {
+            if stats.count > 1 {
+                let mean = sum / stats.count as f64;
+                stats.pearson_residual_var = (sum_squares - stats.count as f64 * mean * mean) / (stats.count as f64 - 1.0);
+            } else {
+                stats.pearson_residual_var = 0.0;
+            }
+        } else {
+            stats.pearson_residual_var = 0.0;
+        }
+    }
+
     // Write row statistics to TSV file
 
     // Sort and write row statistics
@@ -214,7 +306,13 @@ fn write_stats(
     index_name: &str,
 ) -> Result<(), Box<dyn Error>> {
     let mut file = io_utils::get_writer(output_file)?;
-    writeln!(file, "{}\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax", index_name)?;
+    
+    // Different headers for rows and columns
+    if index_name == "Row" {
+        writeln!(file, "{}\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax\tPearsonResidualVar", index_name)?;
+    } else {
+        writeln!(file, "{}\tNonZeroCount\tSum\tMean\tVariance\tStdDev\tMin\tMax", index_name)?;
+    }
 
     let mut sorted_stats: Vec<(usize, &Stats)> = stats.iter().map(|(&k, v)| (k, v)).collect();
     
@@ -225,18 +323,34 @@ fn write_stats(
     }
 
     for (idx, stats) in &sorted_stats {
-        writeln!(
-            file,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
-            idx,
-            stats.nonzero_count,
-            stats.sum,
-            format!("{:.4}", stats.mean()),
-            format!("{:.4}", stats.variance()),
-            format!("{:.4}", stats.std_dev()),
-            stats.min,
-            stats.max
-        )?;
+        if index_name == "Row" {
+            writeln!(
+                file,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                idx,
+                stats.nonzero_count,
+                stats.sum,
+                format!("{:.4}", stats.mean()),
+                format!("{:.4}", stats.variance()),
+                format!("{:.4}", stats.std_dev()),
+                stats.min,
+                stats.max,
+                format!("{:.4}", stats.pearson_residual_var),
+            )?;
+        } else {
+            writeln!(
+                file,
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                idx,
+                stats.nonzero_count,
+                stats.sum,
+                format!("{:.4}", stats.mean()),
+                format!("{:.4}", stats.variance()),
+                format!("{:.4}", stats.std_dev()),
+                stats.min,
+                stats.max
+            )?;
+        }
     }
 
     Ok(())
@@ -253,6 +367,7 @@ fn sort_stats(stats: &mut [(usize, &Stats)], sort_column: SortColumn) {
             SortColumn::StdDev => a.std_dev().partial_cmp(&b.std_dev()).unwrap_or(Ordering::Equal),
             SortColumn::Min => a.min.partial_cmp(&b.min).unwrap_or(Ordering::Equal),
             SortColumn::Max => a.max.partial_cmp(&b.max).unwrap_or(Ordering::Equal),
+            SortColumn::PearsonResidualVar => a.pearson_residual_var.partial_cmp(&b.pearson_residual_var).unwrap_or(Ordering::Equal),
         };
         cmp.reverse()
     });
@@ -265,6 +380,7 @@ struct Stats {
     sum_of_squares: f64,
     min: f64,
     max: f64,
+    pearson_residual_var: f64,
 }
 
 impl Stats {
@@ -276,6 +392,7 @@ impl Stats {
             sum_of_squares: value * value,
             min: value,
             max: value,
+            pearson_residual_var: 0.0,
         }
     }
 
