@@ -57,6 +57,14 @@ enum Commands {
         #[arg(long, required_unless_present = "rows")]
         cols: Option<String>,
 
+        /// Index by row names rather than indices
+        #[arg(long)]
+        rownames: bool,
+
+        /// Index by column names rather than indices
+        #[arg(long)]
+        colnames: bool,
+
         /// Do not reindex the output matrix (keep original indices)
         #[arg(long)]
         no_reindex: bool,
@@ -89,6 +97,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             output,
             rows,
             cols,
+            rownames,
+            colnames,
             no_reindex,
         } => {
 
@@ -97,6 +107,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 &output,
                 rows,
                 cols,
+                rownames,
+                colnames,
                 no_reindex,
             )?;
         }

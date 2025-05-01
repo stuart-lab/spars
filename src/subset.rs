@@ -10,6 +10,8 @@ pub fn subset_matrix(
     output: &str,
     rows_file: Option<String>,
     cols_file: Option<String>,
+    rownames: bool,
+    colnames: bool,
     no_reindex: bool,
 ) -> Result<(), Box<dyn Error>> {
 
@@ -21,15 +23,29 @@ pub fn subset_matrix(
     // check if input is a file or directory
     let is_directory = input.as_ref().map_or(false, |path| Path::new(path).is_dir());
 
+    if rownames || colnames {
+        if is_directory {
+            return Err("Input must be a file when using names".into());
+        }
+    }
+
     // Read the indices to retain
     let rows_to_retain = if let Some(ref file_path) = rows_file {
-        read_indices(file_path)?
+        if rownames {
+            map_names_to_indices(&input, true, file_path)?
+        } else {
+            read_indices(file_path)?
+        }
     } else {
-        Vec::new() // Empty vector indicates all rows are retained
+        Vec::new()
     };
 
     let cols_to_retain = if let Some(ref file_path) = cols_file {
-        read_indices(file_path)?
+        if colnames {
+            map_names_to_indices(&input, false, file_path)?
+        } else {
+            read_indices(file_path)?
+        }
     } else {
         Vec::new() // Empty vector indicates all columns are retained
     };
@@ -311,4 +327,42 @@ fn parse_header_line(header_lines: &Vec<String>) -> Result<(usize, usize, usize)
         }
     }
     Err("Error parsing header line for matrix dimensions.".into())
+}
+
+fn map_names_to_indices(
+    input_dir: &Option<String>,
+    is_rows: bool,
+    names_file: &str,
+) -> Result<Vec<usize>, Box<dyn Error>> {
+    let dir = input_dir.as_ref().ok_or("Input directory required when using names")?;
+    
+    // Determine which file to read based on whether we're mapping rows or columns
+    let mapping_file = if is_rows {
+        format!("{}/features.tsv.gz", dir)
+    } else {
+        format!("{}/barcodes.tsv.gz", dir)
+    };
+
+    // Read the mapping file and create name->index mapping
+    let mut name_to_index = HashMap::<String, usize>::new();
+    let reader = io_utils::get_reader(&mapping_file)?;
+    
+    for (idx, line_result) in reader.lines().enumerate() {
+        let line = line_result?;
+        let parts: Vec<&str> = line.split('\t').collect();
+        if !parts.is_empty() {
+            let name = parts[0].trim().to_string();
+            name_to_index.insert(name, idx + 1);
+        }
+    }
+
+    // Read the names file and convert to indices
+    let names = io_utils::get_reader(&names_file)?;
+    let mut indices = Vec::new();
+    for line_result in names.lines() {
+        let line = line_result?;
+        let name = line.trim().to_string();
+        indices.push(name_to_index.get(&name).copied().unwrap_or(0));
+    }
+    Ok(indices)
 }
