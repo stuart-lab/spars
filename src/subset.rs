@@ -4,6 +4,7 @@ use std::error::Error;
 use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::fs;
+use tempfile::NamedTempFile;
 
 pub fn subset_matrix(
     input: Option<String>,
@@ -137,11 +138,11 @@ fn subset_mtx_file(
     rows_set: &HashSet<usize>,
     cols_set: &HashSet<usize>,
 ) -> Result<(), Box<dyn Error>> {
-    let temp_data_file = "temp_data.mtx";
 
     // Open the input and temporary data files
     let mut reader = io_utils::get_reader(input_file)?;
-    let mut temp_writer = io_utils::get_writer(&temp_data_file)?;
+    let temp_file = NamedTempFile::new()?;
+    let mut temp_writer = io_utils::get_writer(temp_file.path().to_str().unwrap())?;
 
     let mut header_lines = Vec::new();
     let mut n_nonzeros: u64 = 0;
@@ -261,13 +262,13 @@ fn subset_mtx_file(
     output_writer.flush()?;
 
     // Concatenate the temp data file to the output file
-    let mut temp_reader = io_utils::get_reader(&temp_data_file)?;
+    let mut temp_reader = io_utils::get_reader(temp_file.path().to_str().unwrap())?;
     io::copy(&mut temp_reader, &mut output_writer)?;
 
     output_writer.flush()?;
 
     // Clean up the temporary data file
-    std::fs::remove_file(temp_data_file)?;
+    std::fs::remove_file(temp_file.path().to_str().unwrap())?;
 
     Ok(())
 }
