@@ -255,7 +255,7 @@ fn subset_mtx_file(
     };
 
     // record program information in the header
-    writeln!(output_writer, "%metadata json: {{\"software_version\": \"spars-1.0.0\", \"command\": \"spars subset\"}}")?;
+    writeln!(output_writer, "%metadata json: {{\"software_version\": \"sparx-{}\", \"command\": \"sparx subset\"}}", env!("CARGO_PKG_VERSION"))?;
     writeln!(output_writer, "{} {} {}", n_rows, n_cols, n_nonzeros)?;
 
     output_writer.flush()?;
