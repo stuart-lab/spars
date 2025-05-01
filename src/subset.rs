@@ -24,8 +24,8 @@ pub fn subset_matrix(
     let is_directory = input.as_ref().map_or(false, |path| Path::new(path).is_dir());
 
     if rownames || colnames {
-        if is_directory {
-            return Err("Input must be a file when using names".into());
+        if !is_directory {
+            return Err("Input must be a directory when using names".into());
         }
     }
 
