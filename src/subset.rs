@@ -144,12 +144,12 @@ fn subset_mtx_file(
     let mut temp_writer = io_utils::get_writer(&temp_data_file)?;
 
     let mut header_lines = Vec::new();
-    let mut n_nonzeros = 0;
+    let mut n_nonzeros: u64 = 0;
     let mut data_started = false;
 
     let mut buffer = String::new();
 
-    let mut nz_elements = 0;
+    let mut nz_elements: u64 = 0;
 
     while reader.read_line(&mut buffer)? > 0 {
         let trimmed_line = buffer.trim();
