@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand, ArgGroup};
+use clap::{Parser, Subcommand};
 use std::error::Error;
 use std::path::PathBuf;
 mod stats;
@@ -40,11 +40,6 @@ enum Commands {
         theta: Option<f64>,
     },
     /// Subset the MTX file based on specified rows and columns
-    #[command(group(
-        ArgGroup::new("indices")
-            .required(true)
-            .args(&["rows", "cols"]),
-    ))]
     Subset {
         /// Input MTX file or directory containing matrix.mtx.gz, features.tsv.gz, and barcodes.tsv
         #[arg(short = 'i', long = "input")]
@@ -55,11 +50,11 @@ enum Commands {
         output: String,
 
         /// File containing row indices to retain (one per line)
-        #[arg(long)]
+        #[arg(long, required_unless_present = "cols")]
         rows: Option<String>,
 
         /// File containing column indices to retain (one per line)
-        #[arg(long)]
+        #[arg(long, required_unless_present = "rows")]
         cols: Option<String>,
 
         /// Do not reindex the output matrix (keep original indices)
