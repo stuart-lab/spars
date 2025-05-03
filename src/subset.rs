@@ -40,6 +40,7 @@ pub fn subset_matrix(
     } else {
         Vec::new()
     };
+    info!("rows_to_retain: {:?}", rows_to_retain);
 
     let cols_to_retain = if let Some(ref file_path) = cols_file {
         if colnames {
@@ -50,7 +51,7 @@ pub fn subset_matrix(
     } else {
         Vec::new() // Empty vector indicates all columns are retained
     };
-
+    info!("cols_to_retain: {:?}", cols_to_retain);
     let row_mapping = if !rows_to_retain.is_empty() && !no_reindex {
         Some(create_index_mapping(&rows_to_retain))
     } else {
@@ -143,6 +144,7 @@ fn subset_mtx_file(
     let mut reader = io_utils::get_reader(input_file)?;
     let temp_file = NamedTempFile::new()?;
     let mut temp_writer = io_utils::get_writer(temp_file.path().to_str().unwrap())?;
+    info!("temp_file: {:?}", temp_file.path().to_str().unwrap());
 
     let mut header_lines = Vec::new();
     let mut n_nonzeros: u64 = 0;
