@@ -5,6 +5,8 @@ use std::io::{self, BufRead, Write};
 use std::path::Path;
 use std::fs;
 use tempfile::NamedTempFile;
+use log::info;
+
 
 pub fn subset_matrix(
     input: Option<String>,
