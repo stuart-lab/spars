@@ -1,4 +1,4 @@
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use flate2::write::GzEncoder;
 use flate2::Compression;
 use std::fs::File;
@@ -7,7 +7,7 @@ use std::io::{BufRead, BufReader, BufWriter, Read, Write};
 pub fn open_read(filename: &str) -> std::io::Result<Box<dyn Read>> {
     let file = File::open(filename)?;
     if filename.ends_with(".gz") {
-        let decoder = GzDecoder::new(file);
+        let decoder = MultiGzDecoder::new(file);
         Ok(Box::new(decoder))
     } else {
         Ok(Box::new(file))
