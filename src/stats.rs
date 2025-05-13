@@ -260,7 +260,7 @@ pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<Stri
             let pearson_residual = if denominator != 0.0 { (value - mean) / denominator } else { 0.0 };
             
             // Clip Pearson residuals by sqrt(n_cols)
-            let clip_threshold = (n_cols as f64 / 2.0).sqrt();
+            let clip_threshold = (n_cols as f64).sqrt();
             let clipped_pearson_residual = pearson_residual.max(-clip_threshold).min(clip_threshold);
             
             // Update Pearson residual sums for variance calculation
