@@ -1,3 +1,8 @@
+# 1.3.0
+
+Update Pearson residual clipping to be sqrt(N)
+Allow matrix to be multi-block gzip file
+
 # 1.2.0
 
 Add support for name-based subsetting in `spars subset`
