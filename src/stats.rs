@@ -271,6 +271,29 @@ pub fn compute_stats(input_file: &str, output_prefix: &str, sort_by: Option<Stri
     
     println!("");  // Clear the progress line
 
+    // Add contributions from implicit zeros to Pearson residual variance
+    for (row_idx, stats) in &row_stats {
+        let num_zeros = stats.count - stats.nonzero_count;
+        if num_zeros > 0 {
+            let mean = stats.mean();
+            if mean > 0.0 {  // Only process if mean > 0 (avoid division by zero)
+                let denominator = (mean + mean * mean / theta).sqrt();
+                let zero_residual = -mean / denominator;
+                
+                // Clip by sqrt(n_cols) as done for non-zeros
+                let clip_threshold = (n_cols as f64).sqrt();
+                let clipped_residual = zero_residual.max(-clip_threshold).min(clip_threshold);
+                
+                // Add contribution of all zeros to the sums
+                let zero_contribution = num_zeros as f64 * clipped_residual;
+                let zero_squares_contribution = num_zeros as f64 * clipped_residual * clipped_residual;
+                
+                *row_pearson_residual_sums.entry(*row_idx).or_insert(0.0) += zero_contribution;
+                *row_pearson_residual_squares.entry(*row_idx).or_insert(0.0) += zero_squares_contribution;
+            }
+        }
+    }
+
     // Calculate residual variances for each row
     for (row_idx, stats) in &mut row_stats {
         // Calculate Pearson residual variance
@@ -413,15 +436,27 @@ impl Stats {
         }
     }
 
+    // fn finalize(&mut self, total_count: usize, nonzero_count: usize) {
+    //     // Adjust the count and nonzero_count
+    //     self.count = total_count;
+    //     self.nonzero_count = nonzero_count;
+
+    //     // No need to adjust sum or sum_of_squares as zeros don't contribute
+
+    //     // min is nonzero minumum
+    // }
+
     fn finalize(&mut self, total_count: usize, nonzero_count: usize) {
-        // Adjust the count and nonzero_count
-        self.count = total_count;
-        self.nonzero_count = nonzero_count;
+    // Adjust the count and nonzero_count
+    self.count = total_count;
+    self.nonzero_count = nonzero_count;
 
-        // No need to adjust sum or sum_of_squares as zeros don't contribute
-
-        // min is nonzero minumum
+    // If there are any zeros (implicit), min should be 0
+    if nonzero_count < total_count {
+        self.min = 0.0;
     }
+    // Note: max stays as is - the maximum non-zero value is correct
+}
 
     fn mean(&self) -> f64 {
         self.sum / self.count as f64
@@ -435,5 +470,78 @@ impl Stats {
 
     fn std_dev(&self) -> f64 {
         self.variance().sqrt()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[test]
+    fn test_stats_handles_implicit_zeros() {
+        // Create a Stats struct with explicit values only
+        let mut stats = Stats::new(5.0);
+        stats.update(10.0);
+        
+        // Before finalize: only tracked 2 values
+        assert_eq!(stats.count, 2);
+        assert_eq!(stats.min, 5.0);  // Wrong! Missing zeros
+        
+        // After finalize with 10 total elements (8 implicit zeros)
+        stats.finalize(10, 2);
+        
+        assert_eq!(stats.count, 10);
+        assert_eq!(stats.nonzero_count, 2);
+        assert_eq!(stats.min, 0.0);  // Should now be 0
+        assert_eq!(stats.max, 10.0);  // Max unchanged
+        
+        // Mean should be (5+10)/10 = 1.5
+        assert!((stats.mean() - 1.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_compute_stats_small_matrix() {
+        // Create a small test matrix
+        let mut temp_file = NamedTempFile::new().unwrap();
+        writeln!(temp_file, 
+            "%%MatrixMarket matrix coordinate real general\n\
+             3 4 3\n\
+             1 1 6.0\n\
+             1 2 6.0\n\
+             2 3 12.0").unwrap();
+        
+        let temp_path = temp_file.path().to_str().unwrap();
+        
+        // Run stats computation
+        compute_stats(temp_path, "test_output", Some("PearsonResidualVar".to_string()), Some(100.0))
+            .expect("Stats computation failed");
+        
+        // Check the output files exist
+        assert!(std::path::Path::new("test_output_row.tsv").exists());
+        assert!(std::path::Path::new("test_output_col.tsv").exists());
+        
+        // Clean up
+        std::fs::remove_file("test_output_row.tsv").ok();
+        std::fs::remove_file("test_output_col.tsv").ok();
+    }
+
+    #[test]
+    fn test_pearson_residual_calculation() {
+        // Test the math for Pearson residuals with zeros
+        let mean: f64 = 1.2;
+        let theta: f64 = 100.0;
+        let n_cols: f64 = 10.0;  // Make this f64 too
+        
+        let denominator = (mean + mean * mean / theta).sqrt();
+        let zero_residual = -mean / denominator;
+        let clip_threshold = n_cols.sqrt();  // Now works since n_cols is f64
+        
+        // Zero residual should be negative
+        assert!(zero_residual < 0.0);
+        
+        // Should be within clipping threshold
+        assert!(zero_residual.abs() <= clip_threshold);
     }
 }

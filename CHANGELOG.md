@@ -1,3 +1,7 @@
+# 1.4.0
+
+Fix bug in computation of Pearson residual variance that did not correctly account for zeros
+
 # 1.3.0
 
 Update Pearson residual clipping to be sqrt(N)
